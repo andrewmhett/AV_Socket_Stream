@@ -65,7 +65,7 @@ def Receive():
     global height
     while True:
         if data_length>0:
-            if data_id != "V_FRAME_DATA":
+            if data_id != "V_FRAME_DATA" and (data_length < width*height*3 if width>0 else True):
                 data=s.recv(data_length-49).decode()
                 if data.startswith("ID:"):
                     data_id=data.split("ID:")[1]
