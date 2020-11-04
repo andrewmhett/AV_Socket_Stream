@@ -54,7 +54,7 @@ class TargetConnection():
     def receive_command(self):
         while True:
             if self.command_data_length>0:
-                data=self.command_c.recv(self.command_data_length-49).decode()
+                data=self.command_c.recv(self.command_data_length-sys.getsizeof("")).decode()
                 if data == "VQ":
                     self.streaming=False
                     self.send_data(self.command_c,"M:Successfully connected to AV server.\nPlease select a video to play.")

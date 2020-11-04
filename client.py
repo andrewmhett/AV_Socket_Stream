@@ -122,7 +122,7 @@ def receive_command():
     global all_frames_buffered
     while True:
         if command_data_length>0:
-            data=command_s.recv(command_data_length-49).decode()
+            data=command_s.recv(command_data_length-sys.getsizeof("")).decode()
             if data.startswith("M:"):
                 serverTextVar.set(data.split("M:")[1])
             if data.startswith("VL:"):
@@ -205,7 +205,10 @@ def update_screen():
                     serverTextVar.set("Successfully connected to AV server.\nPlease select a video to play.")
                 else:
                     send_data(command_s,"E:BUFFERING")
-            time.sleep(1/framerate)
+            try:
+                time.sleep(1/framerate)
+            except ZeroDivisionError:
+                time.sleep(0.1)
         else:
             time.sleep(0.1)
 
