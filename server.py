@@ -43,15 +43,12 @@ class TargetConnection():
         threading.Thread(target=self.receive_command).start()
     def stream_video_data(self):
         while self.streaming:
-            if self.previous_time != None:
-                self.current_frame+=round((datetime.datetime.now()-self.previous_time).seconds/self.framerate)
-            self.previous_time=datetime.datetime.now()
+            self.current_frame+=1
             try:
                 self.send_data(self.video_c,cv2.cvtColor(self.cap.read(self.current_frame)[1], cv2.COLOR_BGR2RGB).tobytes())
             except cv2.error:
                 self.send_data(self.command_c,"VE")
                 self.streaming=False
-            time.sleep(1/self.framerate)
     def receive_command(self):
         while True:
             if self.command_data_length>0:
@@ -77,7 +74,7 @@ class TargetConnection():
                     print(str(int(self.cap.get(3)))+"x"+str(int(self.cap.get(4))))
                     print("FRAMERATE: {0}".format(self.framerate))
                     print("---------------------")
-                    self.send_data(self.command_c,"VI:{0},{1}".format(self.width,self.height))
+                    self.send_data(self.command_c,"VI:{0},{1},{2}".format(self.width,self.height,int(self.framerate)))
                     self.stream_thread=threading.Thread(target=self.stream_video_data)
                     self.streaming=True
                     self.stream_thread.start()
@@ -95,7 +92,10 @@ class TargetConnection():
                 data=data.decode()
                 self.command_data_length=int(data.split("LENGTH:")[1])
     def send_data(self,connection,data):
-        connection.send("LENGTH:{0}".format(format_length(sys.getsizeof(data))).encode("utf-8"))
+        if type(data) != bytes:
+            connection.send("LENGTH:{0}".format(format_length(sys.getsizeof(data))).encode("utf-8"))
+        else:
+            connection.send("LENGTH:{0}".format(format_length(self.width*self.height*3)).encode("utf-8"))
         if connection == self.command_c:
             connection.send(data.encode("utf-8"))
         elif connection == self.video_c:
@@ -125,6 +125,7 @@ def catch_incoming_connections():
             target_connection.send_data(command_c,"RB:Play")
         else:
             connection.send("M:Successfully connected to AV server.\nThere are currently no videos on this server. Reload the client in order to refresh.".encode("utf-8"))
+        time.sleep(1)
 
 threading.Thread(target=catch_incoming_connections).start()
 print("AV server running on {0}".format(socket.gethostbyname(socket.gethostname())))

@@ -5,6 +5,7 @@ import atexit
 import sys
 import pygame
 import time
+import datetime
 
 main=tkinter.Tk()
 main.title("AV Stream Client")
@@ -39,6 +40,7 @@ def connect(ip):
         b1.pack()
         threading.Thread(target=receive_video).start()
         threading.Thread(target=receive_command).start()
+        threading.Thread(target=update_screen).start()
     except Exception as e:
         ipinf.configure(text="Failed to connect to server")
 
@@ -53,6 +55,10 @@ video_list=[]
 aspect_ratio=0
 orig_width=0
 orig_height=0
+framerate=0
+start_time=None
+frame_buffer=[]
+all_frames_buffered=False
 
 def read_video_frame_from_buffer(length):
     data=b""
@@ -60,11 +66,7 @@ def read_video_frame_from_buffer(length):
     while counter<(length-length%2048):
         counter+=2048
         data+=video_s.recv(2048)
-    tmp_data=b""
-    for i in range(length-sys.getsizeof(data)):
-        while tmp_data == b"":
-            tmp_data=video_s.recv(1)
-        data+=tmp_data
+    data+=video_s.recv(length-sys.getsizeof(data))
     return data
 
 def track_pygame_events():
@@ -109,6 +111,9 @@ def receive_command():
     global aspect_ratio
     global orig_width
     global orig_height
+    global start_time
+    global framerate
+    global all_frames_buffered
     while True:
         if command_data_length>0:
             data=command_s.recv(command_data_length-49).decode()
@@ -129,6 +134,8 @@ def receive_command():
             if data.startswith("VI:"):
                 width=int(data.split("VI:")[1].split(",")[0])
                 height=int(data.split("VI:")[1].split(",")[1])
+                framerate=int(data.split("VI:")[1].split(",")[2])
+                start_time=datetime.datetime.now()
                 orig_width=width
                 orig_height=height
                 aspect_ratio=width/height
@@ -136,33 +143,53 @@ def receive_command():
                 threading.Thread(target=track_pygame_events).start()
                 pygame.display.flip()
             if data=="VE":
-                pygame.display.quit()
-                display=None
-                toggle_pause_button.destroy()
-                ff_button.destroy()
-                media_control_frame.destroy()
-                rewind_button.destroy()
-                video_menu=tkinter.OptionMenu(main, selected_video_name, *(video_list))
-                video_menu.pack()
-                b1=tkinter.Button(main,text=main_button_text,command=send_button_callback)
-                b1.pack()
+                all_frames_buffered=True
             command_data_length=0
         else:
             data=command_s.recv(17)
             if data.startswith(b"LENGTH"):
                 data=data.decode()
                 command_data_length=int(data.split("LENGTH:")[1])
+    time.sleep(0.1)
 
-def update_screen(byte_data):
+def update_screen():
     global width
     global height
     global orig_width
     global orig_height
-    try:
-        display.blit(pygame.transform.scale(pygame.image.frombuffer(byte_data,(orig_width,orig_height),"RGB"),(width,height)),(0,0))
-        pygame.display.flip()
-    except Exception:
-        pass
+    global display
+    global frame_buffer
+    global framerate
+    global start_time
+    global b1
+    global rewind_button
+    global ff_button
+    global toggle_pause_button
+    global video_list
+    current_frame=-1
+    while True:
+        if framerate>0 and display != None:
+            current_frame+=1
+            if len(frame_buffer)>current_frame:
+                display.blit(pygame.transform.scale(pygame.image.frombuffer(frame_buffer[current_frame],(orig_width,orig_height),"RGB"),(width,height)),(0,0))
+                pygame.display.flip()
+            elif len(frame_buffer) == current_frame:
+                if all_frames_buffered:
+                    pygame.display.quit()
+                    display=None
+                    toggle_pause_button.destroy()
+                    ff_button.destroy()
+                    media_control_frame.destroy()
+                    rewind_button.destroy()
+                    video_menu=tkinter.OptionMenu(main, selected_video_name, *(video_list))
+                    video_menu.pack()
+                    b1=tkinter.Button(main,text=main_button_text,command=send_button_callback)
+                    b1.pack()
+                    serverTextVar.set("Successfully connected to AV server.\nPlease select a video to play.")
+            time.sleep(1/framerate)
+        else:
+            time.sleep(0.1)
+
 
 def receive_video():
     global video_data_length
@@ -172,21 +199,17 @@ def receive_video():
     global display
     global video_list
     global selected_video_name
+    global frame_buffer
     while True:
-        if video_data_length>0:
-            if display != None:
-                if pygame.display.get_init():
-                    try:
-                        data=read_video_frame_from_buffer(video_data_length)
-                        threading.Thread(target=update_screen,args=[data,]).start()
-                    except pygame.error:
-                        pass
-            video_data_length=0
-        else:
-            data=video_s.recv(17)
-            if data.startswith(b"LENGTH"):
-                data=data.decode()
-                video_data_length=int(data.split("LENGTH:")[1])
+        if framerate>0:
+            if video_data_length>0:
+                frame_buffer.append(read_video_frame_from_buffer(video_data_length+33))
+                video_data_length=0
+            else:
+                data=video_s.recv(17)
+                if data.startswith(b"LENGTH"):
+                    data=data.decode()
+                    video_data_length=int(data.split("LENGTH:")[1])
 
 def format_length(length):
     out_str=""
