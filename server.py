@@ -40,14 +40,16 @@ class TargetConnection():
         self.cap=None
         self.stream_thread=None
         self.streaming=False
+        self.width=0
+        self.height=0
         threading.Thread(target=self.receive_command).start()
     def stream_video_data(self):
         while self.streaming:
             self.current_frame+=1
             try:
-                self.send_data(self.video_c,cv2.cvtColor(self.cap.read(self.current_frame)[1], cv2.COLOR_BGR2RGB).tobytes())
+                self.send_data(self.video_c,cv2.cvtColor(cv2.resize(self.cap.read(self.current_frame)[1], (self.width,self.height)),cv2.COLOR_BGR2RGB).tobytes())
             except cv2.error:
-                self.send_data(self.command_c,"VE")
+                self.video_c.send(("VE"+("\n"*15)).encode("utf-8"))
                 self.streaming=False
     def receive_command(self):
         while True:
@@ -56,6 +58,9 @@ class TargetConnection():
                 if data == "VQ":
                     self.streaming=False
                     self.send_data(self.command_c,"M:Successfully connected to AV server.\nPlease select a video to play.")
+                    self.cap=None
+                    self.filename=""
+                    self.current_frame=0
                 if data.startswith("VN:"):
                     video_name=data.split("VN:")[1]
                     for directory in os.walk('videos'):
@@ -69,8 +74,10 @@ class TargetConnection():
                     self.framerate=self.cap.get(5)
                     print("----LOADING VIDEO----")
                     print(self.filename)
-                    self.width=int(self.cap.get(3))
-                    self.height=int(self.cap.get(4))
+                    #self.width=int(self.cap.get(3))
+                    #self.height=int(self.cap.get(4))
+                    self.width=int(400*self.cap.get(3)/self.cap.get(4))
+                    self.height=int(self.width*self.cap.get(4)/self.cap.get(3))
                     print(str(int(self.cap.get(3)))+"x"+str(int(self.cap.get(4))))
                     print("FRAMERATE: {0}".format(self.framerate))
                     print("---------------------")
@@ -86,6 +93,12 @@ class TargetConnection():
                         pass
                     if command == "REWIND":
                         pass
+                if data.startswith("E:"):
+                    error=data.split("E:")[1]
+                    if error=="BUFFERING":
+                       #self.height=int(self.height/1.1)
+                       #self.width=int(self.width/1.1)
+                       pass
                 self.command_data_length=0
             else:
                 data=self.command_c.recv(17)
@@ -96,9 +109,9 @@ class TargetConnection():
             connection.send("LENGTH:{0}".format(format_length(sys.getsizeof(data))).encode("utf-8"))
         else:
             connection.send("LENGTH:{0}".format(format_length(self.width*self.height*3)).encode("utf-8"))
-        if connection == self.command_c:
+        if type(data)==str:
             connection.send(data.encode("utf-8"))
-        elif connection == self.video_c:
+        elif connection == self.video_c and type(data)==bytes:
             last_count=0
             size=0
             for i in range(int((self.width*self.height*3)/2048)):
@@ -124,7 +137,7 @@ def catch_incoming_connections():
             target_connection.send_data(command_c,"VL:{0}".format(",".join(videos)))
             target_connection.send_data(command_c,"RB:Play")
         else:
-            connection.send("M:Successfully connected to AV server.\nThere are currently no videos on this server. Reload the client in order to refresh.".encode("utf-8"))
+            target_connection.send_data(command_c,"M:Successfully connected to AV server.\nThere are currently no videos on this server. Reload the client in order to refresh.")
         time.sleep(1)
 
 threading.Thread(target=catch_incoming_connections).start()

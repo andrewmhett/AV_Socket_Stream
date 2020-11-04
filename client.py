@@ -6,6 +6,7 @@ import sys
 import pygame
 import time
 import datetime
+import math
 
 main=tkinter.Tk()
 main.title("AV Stream Client")
@@ -78,6 +79,9 @@ def track_pygame_events():
     global aspect_ratio
     global width
     global height
+    global framerate
+    global frame_buffer
+    global all_frames_buffered
     while display != None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -87,9 +91,11 @@ def track_pygame_events():
                 toggle_pause_button.destroy()
                 ff_button.destroy()
                 media_control_frame.destroy()
-                rewind_button.destroy()
+                framerate=0
+                frame_buffer=[]
                 video_menu=tkinter.OptionMenu(main, selected_video_name, *(video_list))
                 video_menu.pack()
+                all_frames_buffered=False
                 b1=tkinter.Button(main,text=main_button_text,command=send_button_callback)
                 b1.pack()
             if event.type == pygame.VIDEORESIZE:
@@ -117,7 +123,6 @@ def receive_command():
     while True:
         if command_data_length>0:
             data=command_s.recv(command_data_length-49).decode()
-            print(data)
             if data.startswith("M:"):
                 serverTextVar.set(data.split("M:")[1])
             if data.startswith("VL:"):
@@ -132,6 +137,8 @@ def receive_command():
                 main_button_text=data.split("RB:")[1]
                 b1.configure(text=main_button_text)
             if data.startswith("VI:"):
+                
+                video_s.settimeout(None)
                 width=int(data.split("VI:")[1].split(",")[0])
                 height=int(data.split("VI:")[1].split(",")[1])
                 framerate=int(data.split("VI:")[1].split(",")[2])
@@ -142,8 +149,6 @@ def receive_command():
                 display=pygame.display.set_mode((int(width),int(height)),pygame.RESIZABLE)
                 threading.Thread(target=track_pygame_events).start()
                 pygame.display.flip()
-            if data=="VE":
-                all_frames_buffered=True
             command_data_length=0
         else:
             data=command_s.recv(17)
@@ -166,17 +171,29 @@ def update_screen():
     global ff_button
     global toggle_pause_button
     global video_list
-    current_frame=-1
+    global all_frames_buffered
     while True:
         if framerate>0 and display != None:
-            current_frame+=1
-            if len(frame_buffer)>current_frame:
-                display.blit(pygame.transform.scale(pygame.image.frombuffer(frame_buffer[current_frame],(orig_width,orig_height),"RGB"),(width,height)),(0,0))
-                pygame.display.flip()
-            elif len(frame_buffer) == current_frame:
+            if len(frame_buffer)>0:
+                try:
+                    display.blit(pygame.transform.scale(pygame.image.frombuffer(frame_buffer[0][1],frame_buffer[0][0],"RGB"),(width,height)),(0,0))
+                    pygame.display.flip()
+                    frame_buffer=frame_buffer[1:]
+                except Exception:
+                    pass
+            else:
                 if all_frames_buffered:
                     pygame.display.quit()
                     display=None
+                    width=0
+                    height=0
+                    framerate=0
+                    start_time=None
+                    all_frames_buffered=False
+                    orig_width=0
+                    orig_height=0
+                    aspect_ratio=0
+                    frame_buffer=[]
                     toggle_pause_button.destroy()
                     ff_button.destroy()
                     media_control_frame.destroy()
@@ -186,6 +203,8 @@ def update_screen():
                     b1=tkinter.Button(main,text=main_button_text,command=send_button_callback)
                     b1.pack()
                     serverTextVar.set("Successfully connected to AV server.\nPlease select a video to play.")
+                else:
+                    send_data(command_s,"E:BUFFERING")
             time.sleep(1/framerate)
         else:
             time.sleep(0.1)
@@ -200,16 +219,27 @@ def receive_video():
     global video_list
     global selected_video_name
     global frame_buffer
+    global framerate
+    global orig_width
+    global orig_height
+    global all_frames_buffered
     while True:
-        if framerate>0:
-            if video_data_length>0:
-                frame_buffer.append(read_video_frame_from_buffer(video_data_length+33))
-                video_data_length=0
-            else:
-                data=video_s.recv(17)
-                if data.startswith(b"LENGTH"):
-                    data=data.decode()
-                    video_data_length=int(data.split("LENGTH:")[1])
+        if video_data_length>0:
+            #s_width=round(math.sqrt((orig_width/orig_height)*(video_data_length)/3))
+            #s_height=round(math.sqrt((orig_height/orig_width)*(video_data_length)/3))
+            s_width=orig_width
+            s_height=orig_height
+            frame_buffer.append([(s_width,s_height),read_video_frame_from_buffer(video_data_length+33)])
+            video_data_length=0
+        else:
+            data=video_s.recv(17)
+            if data.startswith(b"LENGTH"):
+                data=data.decode()
+                video_data_length=int(data.split("LENGTH:")[1])
+            elif data.startswith(b"VE"):
+                all_frames_buffered=True
+        if framerate==0:
+            frame_buffer=[]
 
 def format_length(length):
     out_str=""
