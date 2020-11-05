@@ -16,6 +16,7 @@ command_s.bind(('',command_port))
 video_s.bind(('',video_port))
 command_s.listen(5)
 video_s.listen(5)
+const_byte_len=0
 
 atexit.register(command_s.close)
 atexit.register(video_s.close)
@@ -52,9 +53,10 @@ class TargetConnection():
                 self.video_c.send(("VE"+("\n"*15)).encode("utf-8"))
                 self.streaming=False
     def receive_command(self):
+        global const_byte_len
         while True:
             if self.command_data_length>0:
-                data=self.command_c.recv(self.command_data_length-sys.getsizeof("")).decode()
+                data=self.command_c.recv(self.command_data_length-const_byte_len).decode()
                 if data == "VQ":
                     self.streaming=False
                     self.send_data(self.command_c,"M:Successfully connected to AV server.\nPlease select a video to play.")
@@ -102,8 +104,11 @@ class TargetConnection():
                 self.command_data_length=0
             else:
                 data=self.command_c.recv(17)
-                data=data.decode()
-                self.command_data_length=int(data.split("LENGTH:")[1])
+                if data.startswith(b"LENGTH"):
+                    data=data.decode()
+                    self.command_data_length=int(data.split("LENGTH:")[1])
+                elif len(data)==3:
+                    const_byte_len=int(data.decode()[0:2])
     def send_data(self,connection,data):
         if type(data) != bytes:
             connection.send("LENGTH:{0}".format(format_length(sys.getsizeof(data))).encode("utf-8"))
@@ -120,6 +125,7 @@ class TargetConnection():
             connection.sendall(data[size:self.width*self.height*3])
 
 def catch_incoming_connections():
+    global const_byte_len
     while True:
         command_c, addr = command_s.accept()
         video_c, addr = video_s.accept()
@@ -131,6 +137,7 @@ def catch_incoming_connections():
         for video in videos:
             videos[counter]=".".join(video.split(".")[:-1])
             counter+=1
+        command_c.send("{0}/".format(sys.getsizeof("")).encode("utf-8"))
         target_connection=TargetConnection(command_c,video_c)
         if len(videos)>0:
             target_connection.send_data(command_c,"M:Successfully connected to AV server.\nPlease select a video to play.")

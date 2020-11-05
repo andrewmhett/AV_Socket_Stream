@@ -29,9 +29,17 @@ def connect(ip):
     global server_ip
     global command_s
     global video_s
+    global const_byte_len
     try:
         command_s.connect((ip,command_port))
         video_s.connect((ip,video_port))
+        recv_byte=b""
+        init_str=""
+        while recv_byte != b"/":
+            init_str+=recv_byte.decode()
+            recv_byte=command_s.recv(1)
+        const_byte_len=int(init_str)
+        command_s.send("{0}/".format(sys.getsizeof("")).encode("utf-8"))
         server_ip=ip
         ipinf.destroy()
         ipent.destroy()
@@ -43,6 +51,7 @@ def connect(ip):
         threading.Thread(target=receive_command).start()
         threading.Thread(target=update_screen).start()
     except Exception as e:
+        print(e)
         ipinf.configure(text="Failed to connect to server")
 
 command_data_length=0
@@ -120,9 +129,10 @@ def receive_command():
     global start_time
     global framerate
     global all_frames_buffered
+    global const_byte_len
     while True:
         if command_data_length>0:
-            data=command_s.recv(command_data_length-sys.getsizeof("")).decode()
+            data=command_s.recv(command_data_length-const_byte_len).decode()
             if data.startswith("M:"):
                 serverTextVar.set(data.split("M:")[1])
             if data.startswith("VL:"):
