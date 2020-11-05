@@ -75,9 +75,9 @@ frame_updated=False
 def read_video_frame_from_buffer(length):
     data=b""
     counter=0
-    while counter<(length-length%20000):
-        counter+=20000
-        data+=video_s.recv(20000)
+    while counter<(length-length%8192):
+        data+=video_s.recv(8192)
+        counter+=8192
     data+=video_s.recv(length-sys.getsizeof(data))
     return data
 

@@ -119,7 +119,9 @@ class TargetConnection():
             last_count=0
             size=0
             for i in range(int((self.width*self.height*3)/50000)):
-                connection.sendall(data[i*50000:(i+1)*50000])
+                sent=0
+                while sent<50000:
+                    sent+=connection.send(data[i*50000:(i+1)*50000])
                 size+=50000
             connection.sendall(data[size:self.width*self.height*3])
 
