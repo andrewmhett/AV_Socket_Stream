@@ -75,9 +75,9 @@ frame_updated=False
 def read_video_frame_from_buffer(length):
     data=b""
     counter=0
-    while counter<(length-length%2048):
-        counter+=2048
-        data+=video_s.recv(2048)
+    while counter<(length-length%20000):
+        counter+=20000
+        data+=video_s.recv(20000)
     data+=video_s.recv(length-sys.getsizeof(data))
     return data
 
@@ -159,7 +159,7 @@ def receive_command():
                 orig_width=width
                 orig_height=height
                 aspect_ratio=width/height
-                display=pygame.display.set_mode((int(width),int(height)),pygame.RESIZABLE)
+                display=pygame.display.set_mode((int(width),int(height)),pygame.DOUBLEBUF | pygame.RESIZABLE)
                 threading.Thread(target=track_pygame_events).start()
                 pygame.display.flip()
             command_data_length=0

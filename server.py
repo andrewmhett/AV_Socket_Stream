@@ -76,7 +76,8 @@ class TargetConnection():
                     self.framerate=self.cap.get(5)
                     print("----LOADING VIDEO----")
                     print(self.filename)
-                    self.width=int(400*self.cap.get(3)/self.cap.get(4))
+                    # self.width=int(400*self.cap.get(3)/self.cap.get(4))
+                    self.width=int(self.cap.get(3))
                     self.height=int(self.width*self.cap.get(4)/self.cap.get(3))
                     print(str(int(self.cap.get(3)))+"x"+str(int(self.cap.get(4))))
                     print("FRAMERATE: {0}".format(self.framerate))
@@ -117,9 +118,9 @@ class TargetConnection():
         elif connection == self.video_c and type(data)==bytes:
             last_count=0
             size=0
-            for i in range(int((self.width*self.height*3)/10000)):
-                connection.sendall(data[i*10000:(i+1)*10000])
-                size+=10000
+            for i in range(int((self.width*self.height*3)/50000)):
+                connection.sendall(data[i*50000:(i+1)*50000])
+                size+=50000
             connection.sendall(data[size:self.width*self.height*3])
 
 def catch_incoming_connections():
