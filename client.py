@@ -6,7 +6,6 @@ import sys
 import pygame
 import time
 import datetime
-import math
 
 main=tkinter.Tk()
 main.title("AV Stream Client")
@@ -69,6 +68,9 @@ framerate=0
 start_time=None
 frame_buffer=[]
 all_frames_buffered=False
+previous_frames=[]
+paused=False
+frame_updated=False
 
 def read_video_frame_from_buffer(length):
     data=b""
@@ -91,6 +93,7 @@ def track_pygame_events():
     global framerate
     global frame_buffer
     global all_frames_buffered
+    global previous_frames
     while display != None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -107,11 +110,12 @@ def track_pygame_events():
                 all_frames_buffered=False
                 b1=tkinter.Button(main,text=main_button_text,command=send_button_callback)
                 b1.pack()
+                previous_frames=[]
             if event.type == pygame.VIDEORESIZE:
                 width=int(event.w)
                 height=int(event.w/aspect_ratio)
                 pygame.display.set_mode((width,height),pygame.RESIZABLE)
-        time.sleep(.1)
+        time.sleep(.2)
 
 def receive_command():
     global b1
@@ -147,7 +151,6 @@ def receive_command():
                 main_button_text=data.split("RB:")[1]
                 b1.configure(text=main_button_text)
             if data.startswith("VI:"):
-                
                 video_s.settimeout(None)
                 width=int(data.split("VI:")[1].split(",")[0])
                 height=int(data.split("VI:")[1].split(",")[1])
@@ -165,7 +168,7 @@ def receive_command():
             if data.startswith(b"LENGTH"):
                 data=data.decode()
                 command_data_length=int(data.split("LENGTH:")[1])
-    time.sleep(0.1)
+    time.sleep(0.2)
 
 def update_screen():
     global width
@@ -182,14 +185,23 @@ def update_screen():
     global toggle_pause_button
     global video_list
     global all_frames_buffered
+    global previous_frames
+    global paused
+    global frame_updated
+    global video_menu
     while True:
-        if framerate>0 and display != None:
+        if framerate>0 and display != None and (not paused or frame_updated):
             if len(frame_buffer)>0:
                 try:
+                    start_time=datetime.datetime.now()
                     display.blit(pygame.transform.scale(pygame.image.frombuffer(frame_buffer[0][1],frame_buffer[0][0],"RGB"),(width,height)),(0,0))
                     pygame.display.flip()
-                    frame_buffer=frame_buffer[1:]
-                except Exception:
+                    if not frame_updated:
+                        previous_frames.append(frame_buffer[0])
+                        frame_buffer=frame_buffer[1:]
+                    else:
+                        frame_updated=False
+                except Exception as e:
                     pass
             else:
                 if all_frames_buffered:
@@ -209,6 +221,7 @@ def update_screen():
                     media_control_frame.destroy()
                     rewind_button.destroy()
                     video_menu=tkinter.OptionMenu(main, selected_video_name, *(video_list))
+                    previous_frames=[]
                     video_menu.pack()
                     b1=tkinter.Button(main,text=main_button_text,command=send_button_callback)
                     b1.pack()
@@ -242,7 +255,7 @@ def receive_video():
             #s_height=round(math.sqrt((orig_height/orig_width)*(video_data_length)/3))
             s_width=orig_width
             s_height=orig_height
-            frame_buffer.append([(s_width,s_height),read_video_frame_from_buffer(video_data_length+33)])
+            frame_buffer.append([(s_width,s_height),read_video_frame_from_buffer(video_data_length-const_byte_len+2*sys.getsizeof("")-16)])
             video_data_length=0
         else:
             data=video_s.recv(17)
@@ -265,12 +278,38 @@ def send_data(connection,data):
     connection.send("LENGTH:{0}".format(format_length(sys.getsizeof(data))).encode("utf-8"))
     connection.send(data.encode('utf-8'))
 
+def toggle_pause():
+    global paused
+    paused=not paused
+
+def fast_forward():
+    global previous_frames
+    global frame_buffer
+    global frame_updated
+    for frame in frame_buffer[0:int(framerate)*10]:
+        previous_frames.append(frame)
+    frame_buffer=frame_buffer[int(framerate)*10:]
+    frame_updated=True
+
+def rewind():
+    global previous_frames
+    global frame_buffer
+    global frame_updated
+    load_frames=previous_frames
+    load_frames.reverse()
+    for frame in load_frames[:int(framerate)*10]:
+        frame_buffer.insert(0,frame)
+    previous_frames=previous_frames[0:-1*int(framerate)*10]
+    frame_updated=True
+
 def send_button_callback():
     global video_menu
     global toggle_pause_button
     global rewind_button
     global ff_button
     global media_control_frame
+    global previous_frames
+    global paused
     msg=""
     if main_button_text == "Play":
         msg="VN:"+selected_video_name.get()
@@ -282,9 +321,9 @@ def send_button_callback():
             b1.destroy()
             video_menu.destroy()
             media_control_frame=tkinter.Frame(main)
-            toggle_pause_button=tkinter.Button(media_control_frame,text="\u23EF",command=lambda: send_data(command_s,"C:TOGGLE_PAUSE"))
-            rewind_button=tkinter.Button(media_control_frame,text="\u23EA",command=lambda: send_data(command_s,"C:REWIND"))
-            ff_button=tkinter.Button(media_control_frame,text="\u23E9",command=lambda: send_data(command_s,"C:FAST_FORWARD"))
+            toggle_pause_button=tkinter.Button(media_control_frame,text="\u23EF",command=toggle_pause)
+            rewind_button=tkinter.Button(media_control_frame,text="\u23EA",command=rewind)
+            ff_button=tkinter.Button(media_control_frame,text="\u23E9",command=fast_forward)
             toggle_pause_button.pack(side=tkinter.LEFT)
             rewind_button.pack(side=tkinter.LEFT)
             ff_button.pack(side=tkinter.LEFT)
