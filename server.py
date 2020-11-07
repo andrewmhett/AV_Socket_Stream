@@ -16,7 +16,6 @@ command_s.bind(('',command_port))
 video_s.bind(('',video_port))
 command_s.listen(5)
 video_s.listen(5)
-const_byte_len=0
 
 atexit.register(command_s.close)
 atexit.register(video_s.close)
@@ -53,10 +52,9 @@ class TargetConnection():
                 self.video_c.send(("VE"+("\n"*15)).encode("utf-8"))
                 self.streaming=False
     def receive_command(self):
-        global const_byte_len
         while True:
             if self.command_data_length>0:
-                data=self.command_c.recv(self.command_data_length-const_byte_len).decode()
+                data=self.command_c.recv(self.command_data_length).decode()
                 if data == "VQ":
                     self.streaming=False
                     self.send_data(self.command_c,"M:Successfully connected to AV server.\nPlease select a video to play.")
@@ -77,7 +75,7 @@ class TargetConnection():
                     print("----LOADING VIDEO----")
                     print(self.filename)
                     # self.width=int(400*self.cap.get(3)/self.cap.get(4))
-                    self.width=int(self.cap.get(3))
+                    self.width=int(self.cap.get(3)/2)
                     self.height=int(self.width*self.cap.get(4)/self.cap.get(3))
                     print(str(int(self.cap.get(3)))+"x"+str(int(self.cap.get(4))))
                     print("FRAMERATE: {0}".format(self.framerate))
@@ -106,13 +104,8 @@ class TargetConnection():
                 if data.startswith(b"LENGTH"):
                     data=data.decode()
                     self.command_data_length=int(data.split("LENGTH:")[1])
-                elif len(data)==3:
-                    const_byte_len=int(data.decode()[0:2])
     def send_data(self,connection,data):
-        if type(data) != bytes:
-            connection.send("LENGTH:{0}".format(format_length(sys.getsizeof(data))).encode("utf-8"))
-        else:
-            connection.send("LENGTH:{0}".format(format_length(self.width*self.height*3)).encode("utf-8"))
+        connection.send("LENGTH:{0}".format(format_length(len(data))).encode("utf-8"))
         if type(data)==str:
             connection.send(data.encode("utf-8"))
         elif connection == self.video_c and type(data)==bytes:
@@ -126,7 +119,6 @@ class TargetConnection():
             connection.sendall(data[size:self.width*self.height*3])
 
 def catch_incoming_connections():
-    global const_byte_len
     while True:
         command_c, addr = command_s.accept()
         video_c, addr = video_s.accept()
@@ -138,7 +130,6 @@ def catch_incoming_connections():
         for video in videos:
             videos[counter]=".".join(video.split(".")[:-1])
             counter+=1
-        command_c.send("{0}/".format(sys.getsizeof("")).encode("utf-8"))
         target_connection=TargetConnection(command_c,video_c)
         if len(videos)>0:
             target_connection.send_data(command_c,"M:Successfully connected to AV server.\nPlease select a video to play.")
