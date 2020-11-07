@@ -71,7 +71,8 @@ def read_video_frame_from_buffer(length):
             tmp+=video_s.recv(10000-len(tmp))
         data+=tmp
         counter+=10000
-    data+=video_s.recv(length-len(data))
+    while length != len(data):
+        data+=video_s.recv(length-len(data))
     return data
 
 def track_pygame_events():
@@ -193,32 +194,33 @@ def update_screen():
                     else:
                         frame_updated=False
                 except Exception as e:
+                    print(e)
                     pass
             else:
-                # if all_frames_buffered:
-                pygame.display.quit()
-                display=None
-                width=0
-                height=0
-                framerate=0
-                start_time=None
-                all_frames_buffered=False
-                orig_width=0
-                orig_height=0
-                aspect_ratio=0
-                frame_buffer=[]
-                toggle_pause_button.destroy()
-                ff_button.destroy()
-                media_control_frame.destroy()
-                rewind_button.destroy()
-                video_menu=tkinter.OptionMenu(main, selected_video_name, *(video_list))
-                previous_frames=[]
-                video_menu.pack()
-                b1=tkinter.Button(main,text=main_button_text,command=send_button_callback)
-                b1.pack()
-                serverTextVar.set("Successfully connected to AV server.\nPlease select a video to play.")
-                # else:
-                    # send_data(command_s,"E:BUFFERING")
+                if all_frames_buffered:
+                    pygame.display.quit()
+                    display=None
+                    width=0
+                    height=0
+                    framerate=0
+                    start_time=None
+                    all_frames_buffered=False
+                    orig_width=0
+                    orig_height=0
+                    aspect_ratio=0
+                    frame_buffer=[]
+                    toggle_pause_button.destroy()
+                    ff_button.destroy()
+                    media_control_frame.destroy()
+                    rewind_button.destroy()
+                    video_menu=tkinter.OptionMenu(main, selected_video_name, *(video_list))
+                    previous_frames=[]
+                    video_menu.pack()
+                    b1=tkinter.Button(main,text=main_button_text,command=send_button_callback)
+                    b1.pack()
+                    serverTextVar.set("Successfully connected to AV server.\nPlease select a video to play.")
+                else:
+                    send_data(command_s,"E:BUFFERING")
             try:
                 time.sleep(1/framerate)
             except ZeroDivisionError:
